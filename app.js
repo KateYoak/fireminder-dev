@@ -1,5 +1,6 @@
 // Fireminder: A spaced repetition app using Fibonacci intervals
-// Fireminder - Main App
+// (FI-bonacci Reminder + Fire Minder 🔥🧠)
+// Main App - Vue 3 Composition API with Firebase backend
 
 // ===== IMPORTS =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
