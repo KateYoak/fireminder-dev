@@ -48,6 +48,29 @@ if (USE_EMULATOR) {
   console.log('🔥 Connected to Firebase Production');
 }
 
+// ===== ENVIRONMENT DATA SEPARATION =====
+// Dev and production environments use separate data paths to avoid mixing test/production data
+const IS_DEV_ENVIRONMENT = window.location.hostname.startsWith('dev.');
+
+/**
+ * Get the Firestore path segments for user data based on environment.
+ * Returns an array of path segments to spread into collection()/doc() calls.
+ * - Production (fireminder.com): ['users', uid]
+ * - Development (dev.fireminder.com): ['environments', 'dev', 'users', uid]
+ * - Emulator (localhost): ['users', uid] (test data)
+ */
+function getUserPath(uid) {
+  if (IS_DEV_ENVIRONMENT) {
+    return ['environments', 'dev', 'users', uid];
+  }
+  return ['users', uid];
+}
+
+console.log(`📂 Data environment: ${IS_DEV_ENVIRONMENT ? 'DEVELOPMENT' : 'PRODUCTION'}`);
+if (IS_DEV_ENVIRONMENT) {
+  console.log('📂 Using separate dev data path: environments/dev/users/...');
+}
+
 // Apply saved theme immediately
 applyTheme(getStoredTheme());
 
@@ -381,7 +404,7 @@ createApp({
     async function loadDecks() {
       if (!user.value) return;
       try {
-        const decksRef = collection(db, 'users', user.value.uid, 'decks');
+        const decksRef = collection(db, ...getUserPath(user.value.uid), 'decks');
         const snapshot = await getDocs(decksRef);
         decks.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
@@ -397,7 +420,7 @@ createApp({
     async function loadCards() {
       if (!user.value || !currentDeckId.value) return;
       try {
-        const cardsRef = collection(db, 'users', user.value.uid, 'cards');
+        const cardsRef = collection(db, ...getUserPath(user.value.uid), 'cards');
         const q = query(cardsRef, where('deckId', '==', currentDeckId.value));
         const snapshot = await getDocs(q);
         cards.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -443,7 +466,7 @@ createApp({
       showNewDeck.value = false;
       
       try {
-        await setDoc(doc(db, 'users', user.value.uid, 'decks', deckId), deck);
+        await setDoc(doc(db, ...getUserPath(user.value.uid), 'decks', deckId), deck);
         decks.value.push({ id: deckId, ...deck });
         currentDeckId.value = deckId;
       } catch (error) {
@@ -507,7 +530,7 @@ createApp({
       showAddCard.value = false;
       
       try {
-        await setDoc(doc(db, 'users', user.value.uid, 'cards', cardId), card);
+        await setDoc(doc(db, ...getUserPath(user.value.uid), 'cards', cardId), card);
         cards.value.push({ id: cardId, ...card });
       } catch (error) {
         console.error('Error creating card:', error);
@@ -561,7 +584,7 @@ createApp({
       }
       
       try {
-        const cardRef = doc(db, 'users', user.value.uid, 'cards', card.id);
+        const cardRef = doc(db, ...getUserPath(user.value.uid), 'cards', card.id);
         await setDoc(cardRef, updates, { merge: true });
         
         // Update local state
@@ -590,7 +613,7 @@ createApp({
       if (!targetCard || !user.value) return;
       
       try {
-        const cardRef = doc(db, 'users', user.value.uid, 'cards', targetCard.id);
+        const cardRef = doc(db, ...getUserPath(user.value.uid), 'cards', targetCard.id);
         await setDoc(cardRef, { retired: true }, { merge: true });
         
         const idx = cards.value.findIndex(c => c.id === targetCard.id);
@@ -613,7 +636,7 @@ createApp({
       if (!confirm('Delete this card permanently?')) return;
       
       try {
-        const cardRef = doc(db, 'users', user.value.uid, 'cards', targetCard.id);
+        const cardRef = doc(db, ...getUserPath(user.value.uid), 'cards', targetCard.id);
         await deleteDoc(cardRef);
         
         cards.value = cards.value.filter(c => c.id !== targetCard.id);
@@ -646,7 +669,7 @@ createApp({
       }
       
       try {
-        const cardRef = doc(db, 'users', user.value.uid, 'cards', currentCard.value.id);
+        const cardRef = doc(db, ...getUserPath(user.value.uid), 'cards', currentCard.value.id);
         await setDoc(cardRef, { content: editedContent.value }, { merge: true });
         
         // Update local state
@@ -714,7 +737,7 @@ createApp({
       
       for (const card of cardsToDelete) {
         try {
-          await deleteDoc(doc(db, 'users', user.value.uid, 'cards', card.id));
+          await deleteDoc(doc(db, ...getUserPath(user.value.uid), 'cards', card.id));
         } catch (err) {
           console.error('Failed to delete card:', card.id, err);
         }
@@ -726,7 +749,7 @@ createApp({
       
       for (const deck of decksToDelete) {
         try {
-          await deleteDoc(doc(db, 'users', user.value.uid, 'decks', deck.id));
+          await deleteDoc(doc(db, ...getUserPath(user.value.uid), 'decks', deck.id));
         } catch (err) {
           console.error('Failed to delete deck:', deck.id, err);
         }
@@ -781,7 +804,7 @@ createApp({
       if (!newContent) return;
       
       try {
-        const cardRef = doc(db, 'users', user.value.uid, 'cards', showCardDetail.value.id);
+        const cardRef = doc(db, ...getUserPath(user.value.uid), 'cards', showCardDetail.value.id);
         await setDoc(cardRef, { content: newContent }, { merge: true });
         
         // Update local state
@@ -820,7 +843,7 @@ createApp({
       if (!settingsName.value.trim()) return;
       
       try {
-        const deckRef = doc(db, 'users', user.value.uid, 'decks', currentDeck.value.id);
+        const deckRef = doc(db, ...getUserPath(user.value.uid), 'decks', currentDeck.value.id);
         const updates = {
           name: settingsName.value.trim(),
           startingInterval: parseInt(settingsInterval.value) || 2,
@@ -855,12 +878,12 @@ createApp({
       try {
         // Delete all cards in deck
         for (const card of cardsInDeck) {
-          const cardRef = doc(db, 'users', user.value.uid, 'cards', card.id);
+          const cardRef = doc(db, ...getUserPath(user.value.uid), 'cards', card.id);
           await deleteDoc(cardRef);
         }
         
         // Delete deck
-        const deckRef = doc(db, 'users', user.value.uid, 'decks', currentDeck.value.id);
+        const deckRef = doc(db, ...getUserPath(user.value.uid), 'decks', currentDeck.value.id);
         await deleteDoc(deckRef);
         
         // Update local state
@@ -998,7 +1021,7 @@ createApp({
         };
         
         try {
-          await setDoc(doc(db, 'users', user.value.uid, 'cards', cardId), card);
+          await setDoc(doc(db, ...getUserPath(user.value.uid), 'cards', cardId), card);
           cards.value.push({ id: cardId, ...card });
         } catch (err) {
           console.error('Failed to import card:', err);
@@ -1060,7 +1083,7 @@ createApp({
       if (moveToDeckTarget.value === card.deckId) return; // Same deck
       
       try {
-        const cardRef = doc(db, 'users', user.value.uid, 'cards', card.id);
+        const cardRef = doc(db, ...getUserPath(user.value.uid), 'cards', card.id);
         await setDoc(cardRef, { deckId: moveToDeckTarget.value }, { merge: true });
         
         // Update local state
@@ -1525,7 +1548,7 @@ createApp({
 
       <!-- Dev Environment Ribbon -->
       <div v-if="isDevEnvironment" class="dev-ribbon">
-        dev.fireminder.com - you are viewing development version of the site
+        🔬 DEV ENVIRONMENT - Data is separate from production
       </div>
 
       <!-- Header -->
