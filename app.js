@@ -18,6 +18,7 @@ import {
   THEMES, getStoredTheme, applyTheme, formatHistoryDate,
   INTERVAL_UNITS, formatIntervalWithUnit
 } from './utils.js';
+import { LANDING_PAGES, getLandingPage } from './landing-pages/index.js';
 
 // ===== FIREBASE SETUP =====
 const USE_EMULATOR = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -1168,53 +1169,58 @@ createApp({
     }
 
     // --- Landing Pages & Analytics ---
-    const LANDING_PAGES = {
-      'welcome': {
-        title: 'Welcome to Fireminder',
-        subtitle: 'Master anything with spaced repetition',
-        cta: 'Get Started Free'
-      },
-      'productivity': {
-        title: 'Boost Your Memory',
-        subtitle: 'Remember more with less effort using Fibonacci intervals',
-        cta: 'Try It Now'
-      },
-      'learning': {
-        title: 'Learn Smarter, Not Harder',
-        subtitle: 'The science-backed way to retain knowledge forever',
-        cta: 'Start Learning'
-      }
-    };
+    // Landing pages are now loaded from /landing-pages/*.js files
+    // See landing-pages/index.js for the registry
     
-    // Analytics tracking (stub - logs to console, ready for real analytics)
-    function trackEvent(eventName, data = {}) {
+    // Admin panel state
+    const showAnalyticsAdmin = ref(false);
+    const analyticsData = ref([]);
+    const analyticsLoading = ref(false);
+    const analyticsSummary = ref({});
+    
+    // Get visitor ID (persistent across sessions)
+    function getVisitorId() {
+      let visitorId = localStorage.getItem('fireminder-visitor-id');
+      if (!visitorId) {
+        visitorId = `v_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        localStorage.setItem('fireminder-visitor-id', visitorId);
+      }
+      return visitorId;
+    }
+    
+    // Analytics tracking - stores in Firestore for persistence
+    async function trackEvent(eventName, data = {}) {
       const event = {
         event: eventName,
         timestamp: new Date().toISOString(),
         page: currentLandingPage.value,
         campaign: landingPageCampaign.value,
+        visitorId: getVisitorId(),
+        userAgent: navigator.userAgent,
+        referrer: document.referrer || null,
         ...data
       };
       console.log('📊 Analytics:', event);
-      // TODO: Send to real analytics service
+      
+      // Store in Firestore (analytics collection at root level)
+      try {
+        const docId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await setDoc(doc(db, 'analytics', 'landing-pages', 'events', docId), event);
+      } catch (err) {
+        console.warn('Analytics storage failed (may be blocked by rules):', err.message);
+      }
+      
       return event;
     }
     
-    function trackPageView() {
-      const visitorId = localStorage.getItem('fireminder-visitor-id') || `v_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      localStorage.setItem('fireminder-visitor-id', visitorId);
-      
-      trackEvent('page_view', { 
-        visitorId,
-        isNewVisitor: !localStorage.getItem('fireminder-returning')
-      });
+    async function trackPageView() {
+      const isNewVisitor = !localStorage.getItem('fireminder-returning');
+      await trackEvent('page_view', { isNewVisitor });
       localStorage.setItem('fireminder-returning', 'true');
     }
     
-    function trackSignup() {
-      trackEvent('signup', {
-        visitorId: localStorage.getItem('fireminder-visitor-id')
-      });
+    async function trackSignup() {
+      await trackEvent('signup', {});
     }
     
     function initLandingPage() {
@@ -1226,7 +1232,9 @@ createApp({
         const queryString = match[3] || '';
         const params = new URLSearchParams(queryString);
         
-        if (LANDING_PAGES[pageName]) {
+        // Use imported LANDING_PAGES from landing-pages/index.js
+        const pageData = getLandingPage(pageName);
+        if (pageData) {
           currentLandingPage.value = pageName;
           landingPageCampaign.value = params.get('utm_campaign') || params.get('c') || null;
           trackPageView();
@@ -1248,8 +1256,87 @@ createApp({
     
     const currentLandingPageData = computed(() => {
       if (!currentLandingPage.value) return null;
-      return LANDING_PAGES[currentLandingPage.value] || null;
+      return getLandingPage(currentLandingPage.value);
     });
+    
+    // Analytics Admin Functions
+    async function loadAnalytics() {
+      analyticsLoading.value = true;
+      analyticsData.value = [];
+      analyticsSummary.value = {};
+      
+      try {
+        const eventsRef = collection(db, 'analytics', 'landing-pages', 'events');
+        const snapshot = await getDocs(eventsRef);
+        
+        const events = [];
+        snapshot.forEach(doc => {
+          events.push({ id: doc.id, ...doc.data() });
+        });
+        
+        // Sort by timestamp descending
+        events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        analyticsData.value = events;
+        
+        // Calculate summary
+        const summary = {
+          totalPageViews: 0,
+          uniqueVisitors: new Set(),
+          signups: 0,
+          byPage: {},
+          byCampaign: {}
+        };
+        
+        for (const event of events) {
+          if (event.event === 'page_view') {
+            summary.totalPageViews++;
+            if (event.visitorId) summary.uniqueVisitors.add(event.visitorId);
+            
+            // By page
+            const page = event.page || 'unknown';
+            if (!summary.byPage[page]) {
+              summary.byPage[page] = { views: 0, signups: 0 };
+            }
+            summary.byPage[page].views++;
+            
+            // By campaign
+            const campaign = event.campaign || '(direct)';
+            if (!summary.byCampaign[campaign]) {
+              summary.byCampaign[campaign] = { views: 0, signups: 0 };
+            }
+            summary.byCampaign[campaign].views++;
+          }
+          
+          if (event.event === 'signup') {
+            summary.signups++;
+            
+            const page = event.page || 'unknown';
+            if (summary.byPage[page]) summary.byPage[page].signups++;
+            
+            const campaign = event.campaign || '(direct)';
+            if (summary.byCampaign[campaign]) summary.byCampaign[campaign].signups++;
+          }
+        }
+        
+        summary.uniqueVisitorCount = summary.uniqueVisitors.size;
+        delete summary.uniqueVisitors; // Don't need the Set in the template
+        
+        analyticsSummary.value = summary;
+      } catch (err) {
+        console.error('Failed to load analytics:', err);
+      }
+      
+      analyticsLoading.value = false;
+    }
+    
+    function openAnalyticsAdmin() {
+      showAnalyticsAdmin.value = true;
+      loadAnalytics();
+    }
+    
+    function closeAnalyticsAdmin() {
+      showAnalyticsAdmin.value = false;
+    }
     
     // --- Content Pages ---
     const CONTENT_INDEX = {
@@ -1550,6 +1637,13 @@ createApp({
       landingPageCampaign,
       closeLandingPage,
       landingPageSignup,
+      showAnalyticsAdmin,
+      analyticsData,
+      analyticsLoading,
+      analyticsSummary,
+      openAnalyticsAdmin,
+      closeAnalyticsAdmin,
+      loadAnalytics,
       showContentPage,
       contentPageSlug,
       contentPageData,
@@ -1576,21 +1670,45 @@ createApp({
 
   template: `
     <div id="app">
-      <!-- Landing Page Overlay -->
-      <div class="landing-page" v-if="currentLandingPageData">
-        <div class="landing-close" @click="closeLandingPage">✕</div>
+      <!-- Landing Page Overlay (always shows when URL matches, even if logged in) -->
+      <div class="landing-page" v-if="currentLandingPageData" data-testid="landing-page">
+        <div class="landing-close" @click="closeLandingPage" data-testid="landing-close">✕</div>
         <div class="landing-content">
           <div class="landing-logo">🔥 Fireminder</div>
           <h1 class="landing-title">{{ currentLandingPageData.title }}</h1>
           <p class="landing-subtitle">{{ currentLandingPageData.subtitle }}</p>
+          
+          <!-- Features section (if defined in landing page) -->
+          <div class="landing-features" v-if="currentLandingPageData.features">
+            <div class="landing-feature" v-for="(feature, idx) in currentLandingPageData.features" :key="idx">
+              <span class="landing-feature-icon">{{ feature.icon }}</span>
+              <div class="landing-feature-text">
+                <strong>{{ feature.title }}</strong>
+                <span>{{ feature.description }}</span>
+              </div>
+            </div>
+          </div>
+          
           <button class="landing-cta" @click="landingPageSignup">{{ currentLandingPageData.cta }}</button>
+          
+          <!-- Testimonial (if defined) -->
+          <div class="landing-testimonial" v-if="currentLandingPageData.testimonial">
+            <p class="testimonial-text">"{{ currentLandingPageData.testimonial.text }}"</p>
+            <p class="testimonial-author">— {{ currentLandingPageData.testimonial.author }}</p>
+          </div>
+          
           <p class="landing-skip">
             Already have an account? 
-            <a href="#" @click.prevent="closeLandingPage; signIn()">Sign in</a>
+            <a href="#" @click.prevent="closeLandingPage(); signIn()">Sign in</a>
+          </p>
+          
+          <!-- Footer text (if defined) -->
+          <p class="landing-footer-text" v-if="currentLandingPageData.footer">
+            {{ currentLandingPageData.footer }}
           </p>
         </div>
         <div class="landing-footer">
-          <span v-if="landingPageCampaign" class="landing-campaign">Campaign: {{ landingPageCampaign }}</span>
+          <span v-if="landingPageCampaign" class="landing-campaign" data-testid="landing-campaign">Campaign: {{ landingPageCampaign }}</span>
         </div>
       </div>
       
@@ -1645,6 +1763,11 @@ createApp({
           <!-- Developer Section (only when logged in) -->
           <template v-if="user">
             <div class="sidebar-section-title" style="margin-top: var(--space-lg);">Developer</div>
+            
+            <!-- Analytics Admin -->
+            <button class="sidebar-action-btn" @click="openAnalyticsAdmin(); showSidebar = false" data-testid="analytics-admin-link">
+              📊 Landing Analytics
+            </button>
             
             <!-- Time Travel -->
             <div class="sidebar-setting">
@@ -2413,6 +2536,90 @@ createApp({
               Cancel
             </button>
           </div>
+        </div>
+      </div>
+      
+      <!-- Analytics Admin Panel -->
+      <div class="panel analytics-panel" v-if="showAnalyticsAdmin" data-testid="analytics-admin">
+        <div class="panel-header">
+          <button class="icon-btn" @click="closeAnalyticsAdmin">✕</button>
+          <span class="panel-title">Landing Page Analytics</span>
+          <button class="panel-action" @click="loadAnalytics">Refresh</button>
+        </div>
+        <div class="panel-body">
+          <div v-if="analyticsLoading" class="analytics-loading">
+            Loading analytics data...
+          </div>
+          <template v-else>
+            <!-- Summary Cards -->
+            <div class="analytics-summary">
+              <div class="analytics-stat">
+                <div class="analytics-stat-value">{{ analyticsSummary.totalPageViews || 0 }}</div>
+                <div class="analytics-stat-label">Page Views</div>
+              </div>
+              <div class="analytics-stat">
+                <div class="analytics-stat-value">{{ analyticsSummary.uniqueVisitorCount || 0 }}</div>
+                <div class="analytics-stat-label">Unique Visitors</div>
+              </div>
+              <div class="analytics-stat">
+                <div class="analytics-stat-value">{{ analyticsSummary.signups || 0 }}</div>
+                <div class="analytics-stat-label">Signups</div>
+              </div>
+            </div>
+            
+            <!-- By Landing Page -->
+            <div class="analytics-section" v-if="Object.keys(analyticsSummary.byPage || {}).length > 0">
+              <h3>By Landing Page</h3>
+              <table class="analytics-table">
+                <thead>
+                  <tr><th>Page</th><th>Views</th><th>Signups</th><th>Conv %</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(data, page) in analyticsSummary.byPage" :key="page">
+                    <td>{{ page }}</td>
+                    <td>{{ data.views }}</td>
+                    <td>{{ data.signups }}</td>
+                    <td>{{ data.views > 0 ? ((data.signups / data.views) * 100).toFixed(1) : 0 }}%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- By Campaign -->
+            <div class="analytics-section" v-if="Object.keys(analyticsSummary.byCampaign || {}).length > 0">
+              <h3>By Campaign</h3>
+              <table class="analytics-table">
+                <thead>
+                  <tr><th>Campaign</th><th>Views</th><th>Signups</th><th>Conv %</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(data, campaign) in analyticsSummary.byCampaign" :key="campaign">
+                    <td>{{ campaign }}</td>
+                    <td>{{ data.views }}</td>
+                    <td>{{ data.signups }}</td>
+                    <td>{{ data.views > 0 ? ((data.signups / data.views) * 100).toFixed(1) : 0 }}%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- Recent Events -->
+            <div class="analytics-section">
+              <h3>Recent Events ({{ analyticsData.length }})</h3>
+              <div class="analytics-events">
+                <div class="analytics-event" v-for="event in analyticsData.slice(0, 50)" :key="event.id">
+                  <span class="event-type" :class="event.event">{{ event.event }}</span>
+                  <span class="event-page">{{ event.page }}</span>
+                  <span class="event-campaign" v-if="event.campaign">{{ event.campaign }}</span>
+                  <span class="event-time">{{ new Date(event.timestamp).toLocaleString() }}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div v-if="analyticsData.length === 0" class="analytics-empty">
+              No analytics data yet. Visit a landing page to generate events.
+            </div>
+          </template>
         </div>
       </div>
       

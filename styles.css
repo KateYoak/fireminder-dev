@@ -1835,6 +1835,71 @@ html, body {
   opacity: 0.5;
 }
 
+/* Landing Page Features Section */
+.landing-features {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin: var(--space-xl) 0;
+  text-align: left;
+}
+
+.landing-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+}
+
+.landing-feature-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.landing-feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.landing-feature-text strong {
+  color: var(--text-primary);
+}
+
+.landing-feature-text span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Landing Page Testimonial */
+.landing-testimonial {
+  margin-top: var(--space-lg);
+  padding: var(--space-md);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent);
+}
+
+.testimonial-text {
+  font-style: italic;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
+}
+
+.testimonial-author {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Landing Page Footer Text */
+.landing-footer-text {
+  margin-top: var(--space-lg);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 /* Content Pages */
 .content-panel .panel-body {
   padding: 0;
@@ -1965,5 +2030,134 @@ html, body {
   font-size: 0.875rem;
   font-weight: 500;
   width: 100%;
+}
+
+/* ===== Analytics Admin Panel ===== */
+.analytics-panel .panel-body {
+  padding: var(--space-md);
+}
+
+.analytics-loading {
+  text-align: center;
+  padding: var(--space-xl);
+  color: var(--text-secondary);
+}
+
+.analytics-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.analytics-stat {
+  background: var(--bg-secondary);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.analytics-stat-value {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--accent);
+}
+
+.analytics-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.analytics-section {
+  margin-bottom: var(--space-lg);
+}
+
+.analytics-section h3 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.analytics-table th,
+.analytics-table td {
+  padding: var(--space-sm);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.analytics-table th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.analytics-table td {
+  color: var(--text-primary);
+}
+
+.analytics-events {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.analytics-event {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.analytics-event:last-child {
+  border-bottom: none;
+}
+
+.event-type {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+}
+
+.event-type.page_view {
+  background: var(--accent);
+  color: white;
+}
+
+.event-type.signup {
+  background: var(--success);
+  color: white;
+}
+
+.event-page {
+  color: var(--text-primary);
+}
+
+.event-campaign {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.event-time {
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.analytics-empty {
+  text-align: center;
+  padding: var(--space-xl);
+  color: var(--text-secondary);
 }
 
