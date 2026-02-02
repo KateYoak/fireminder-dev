@@ -171,6 +171,11 @@ createApp({
     const storedTimeTravelStart = localStorage.getItem('fireminder-timetravel-started') || '';
     const timeTravelStartedAt = ref(storedTimeTravelStart);
     if (storedSimDate) console.log('🕐 Restored simulated date:', storedSimDate);
+    
+    // --- Score Debug Mode (Developer) ---
+    const storedScoreDebug = localStorage.getItem('fireminder-score-debug') === 'true';
+    const showScoreDebug = ref(storedScoreDebug);
+    if (storedScoreDebug) console.log('📊 Score debug mode enabled');
 
     // --- Computed ---
     const currentDeck = computed(() => {
@@ -204,6 +209,9 @@ createApp({
     const effectiveToday = computed(() => getTodayFormatted());
     const isTimeTraveling = computed(() => !!simulatedDateRef.value);
 
+    // Store debug info about card scores
+    const dueCardsDebugInfo = ref({});
+    
     const dueCards = computed(() => {
       const today = effectiveToday.value;
       const deckCards = currentDeckCards.value.filter(c => !c.retired && !c.deleted && !c.skippedToday);
@@ -216,23 +224,44 @@ createApp({
       const targetCards = currentDeck.value?.queueLimit || Infinity;
       const maxNewCards = currentDeck.value?.maxNewCards ?? 1;
       
+      // Debug info collection
+      const debugInfo = {
+        targetCards: targetCards === Infinity ? '∞' : targetCards,
+        maxNewCards: maxNewCards,
+        reviewedCount: reviewed.length,
+        queueCount: neverReviewed.length,
+        cardScores: {}
+      };
+      
       // Score each reviewed card: (intervalsOverdue + 1) / currentPeriod
       const scoredCards = reviewed.map(card => {
-        const intervalsOverdue = daysBetween(card.nextDueDate, today) / card.currentInterval;
+        const daysOverdue = daysBetween(card.nextDueDate, today);
+        const intervalsOverdue = daysOverdue / card.currentInterval;
         const baseScore = (intervalsOverdue + 1) / card.currentInterval;
-        return { card, score: baseScore, period: card.currentInterval };
+        return { 
+          card, 
+          score: baseScore, 
+          period: card.currentInterval,
+          daysOverdue: daysOverdue,
+          intervalsOverdue: intervalsOverdue
+        };
       });
       
       // Build queue using greedy selection with penalties
       const selected = [];
       const periodCounts = {};
+      let selectionOrder = 1;
       
       while (scoredCards.length > 0) {
         // Recalculate scores with penalties
         for (const item of scoredCards) {
           const periodShown = periodCounts[item.period] || 0;
           const overTarget = Math.max(0, selected.length - targetCards + 1);
-          item.adjustedScore = item.score - (0.1 * periodShown) - (0.1 * overTarget);
+          const periodPenalty = 0.1 * periodShown;
+          const overTargetPenalty = 0.1 * overTarget;
+          item.adjustedScore = item.score - periodPenalty - overTargetPenalty;
+          item.periodPenalty = periodPenalty;
+          item.overTargetPenalty = overTargetPenalty;
         }
         
         // Sort by adjusted score descending
@@ -243,7 +272,35 @@ createApp({
           const best = scoredCards.shift();
           selected.push(best.card);
           periodCounts[best.period] = (periodCounts[best.period] || 0) + 1;
+          
+          // Store debug info for this card
+          debugInfo.cardScores[best.card.id] = {
+            order: selectionOrder++,
+            type: 'reviewed',
+            baseScore: best.score.toFixed(3),
+            periodPenalty: best.periodPenalty.toFixed(3),
+            overTargetPenalty: best.overTargetPenalty.toFixed(3),
+            adjustedScore: best.adjustedScore.toFixed(3),
+            interval: best.period,
+            daysOverdue: best.daysOverdue,
+            intervalsOverdue: best.intervalsOverdue.toFixed(2)
+          };
         } else {
+          // Store rejected cards' debug info
+          for (const item of scoredCards) {
+            debugInfo.cardScores[item.card.id] = {
+              order: null,
+              type: 'rejected',
+              baseScore: item.score.toFixed(3),
+              periodPenalty: item.periodPenalty.toFixed(3),
+              overTargetPenalty: item.overTargetPenalty.toFixed(3),
+              adjustedScore: item.adjustedScore.toFixed(3),
+              interval: item.period,
+              daysOverdue: item.daysOverdue,
+              intervalsOverdue: item.intervalsOverdue.toFixed(2),
+              reason: 'Score not positive'
+            };
+          }
           break;
         }
       }
@@ -254,10 +311,27 @@ createApp({
       
       let newCardsAdded = 0;
       for (const card of neverReviewed) {
-        if (selected.length >= targetCards) break;
-        if (newCardsAdded >= maxNewCards) break;
-        selected.push(card);
-        newCardsAdded++;
+        const wouldBeAdded = selected.length < targetCards && newCardsAdded < maxNewCards;
+        
+        if (wouldBeAdded) {
+          selected.push(card);
+          newCardsAdded++;
+          debugInfo.cardScores[card.id] = {
+            order: selectionOrder++,
+            type: 'new',
+            baseScore: 'N/A',
+            adjustedScore: 'N/A',
+            reason: `New card #${newCardsAdded} of ${maxNewCards}`
+          };
+        } else {
+          debugInfo.cardScores[card.id] = {
+            order: null,
+            type: 'queued',
+            baseScore: 'N/A',
+            adjustedScore: 'N/A',
+            reason: selected.length >= targetCards ? 'Over target' : `Max new cards reached (${maxNewCards})`
+          };
+        }
       }
       
       // Sort bumped cards to the end of the queue
@@ -271,6 +345,9 @@ createApp({
           return 0;  // preserve original order
         });
       }
+      
+      debugInfo.selectedCount = selected.length;
+      dueCardsDebugInfo.value = debugInfo;
       
       return selected;
     });
@@ -795,6 +872,12 @@ createApp({
       timeTravelStartedAt.value = '';
       localStorage.removeItem('fireminder-timetravel-started');
       applySimulatedDate('');
+    }
+    
+    function toggleScoreDebug() {
+      showScoreDebug.value = !showScoreDebug.value;
+      localStorage.setItem('fireminder-score-debug', showScoreDebug.value);
+      console.log('📊 Score debug mode:', showScoreDebug.value ? 'ON' : 'OFF');
     }
     
     function promptResetTimeTravel() {
@@ -1641,6 +1724,9 @@ createApp({
       simulatedDateRef,
       effectiveToday,
       isTimeTraveling,
+      showScoreDebug,
+      toggleScoreDebug,
+      dueCardsDebugInfo,
       isEditing,
       selectedInterval,
       reflectionText,
@@ -1839,6 +1925,15 @@ createApp({
               />
             </div>
             
+            <!-- Score Debug Mode -->
+            <div class="sidebar-setting">
+              <div class="sidebar-setting-label">📊 Show Scores</div>
+              <label class="toggle-switch">
+                <input type="checkbox" :checked="showScoreDebug" @change="toggleScoreDebug">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            
             <!-- Theme Picker -->
             <div class="sidebar-setting">
               <div class="sidebar-setting-label">🎨 Theme</div>
@@ -2001,6 +2096,62 @@ createApp({
 
           <div class="queue-status" v-if="!isEditing">
             {{ dueCards.length - 1 }} more today
+          </div>
+          
+          <!-- Score Debug Panel -->
+          <div class="score-debug-panel" v-if="showScoreDebug && !isEditing">
+            <div class="score-debug-header">
+              📊 Score Debug
+              <span class="score-debug-summary">
+                Target: {{ dueCardsDebugInfo.targetCards }} | 
+                Showing: {{ dueCardsDebugInfo.selectedCount }} |
+                Due: {{ dueCardsDebugInfo.reviewedCount }} |
+                Queue: {{ dueCardsDebugInfo.queueCount }}
+              </span>
+            </div>
+            <div class="score-debug-current" v-if="currentCard && dueCardsDebugInfo.cardScores[currentCard.id]">
+              <div class="score-debug-label">Current Card:</div>
+              <div class="score-debug-row">
+                <span class="score-key">Type:</span>
+                <span class="score-value">{{ dueCardsDebugInfo.cardScores[currentCard.id].type }}</span>
+              </div>
+              <template v-if="dueCardsDebugInfo.cardScores[currentCard.id].type === 'reviewed'">
+                <div class="score-debug-row">
+                  <span class="score-key">Interval:</span>
+                  <span class="score-value">{{ dueCardsDebugInfo.cardScores[currentCard.id].interval }} days</span>
+                </div>
+                <div class="score-debug-row">
+                  <span class="score-key">Days overdue:</span>
+                  <span class="score-value">{{ dueCardsDebugInfo.cardScores[currentCard.id].daysOverdue }}</span>
+                </div>
+                <div class="score-debug-row">
+                  <span class="score-key">Intervals overdue:</span>
+                  <span class="score-value">{{ dueCardsDebugInfo.cardScores[currentCard.id].intervalsOverdue }}</span>
+                </div>
+                <div class="score-debug-row">
+                  <span class="score-key">Base score:</span>
+                  <span class="score-value">{{ dueCardsDebugInfo.cardScores[currentCard.id].baseScore }}</span>
+                </div>
+                <div class="score-debug-row">
+                  <span class="score-key">Period penalty:</span>
+                  <span class="score-value">-{{ dueCardsDebugInfo.cardScores[currentCard.id].periodPenalty }}</span>
+                </div>
+                <div class="score-debug-row">
+                  <span class="score-key">Over-target penalty:</span>
+                  <span class="score-value">-{{ dueCardsDebugInfo.cardScores[currentCard.id].overTargetPenalty }}</span>
+                </div>
+                <div class="score-debug-row score-final">
+                  <span class="score-key">Final score:</span>
+                  <span class="score-value">{{ dueCardsDebugInfo.cardScores[currentCard.id].adjustedScore }}</span>
+                </div>
+              </template>
+              <template v-else>
+                <div class="score-debug-row">
+                  <span class="score-key">Reason:</span>
+                  <span class="score-value">{{ dueCardsDebugInfo.cardScores[currentCard.id].reason }}</span>
+                </div>
+              </template>
+            </div>
           </div>
         </template>
 
