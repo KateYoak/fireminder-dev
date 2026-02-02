@@ -170,7 +170,7 @@ createApp({
     const newDeckName = ref('');
     const newDeckInterval = ref(2);
     const newDeckIntervalUnit = ref('days'); // hours, days, weeks, months, years
-    const newDeckLimit = ref(null);          // null = unlimited (target cards)
+    const newDeckLimit = ref(5);              // target cards per day, default 5
     const newDeckMaxNewCards = ref(1);        // max new cards per day, default 1
     
     // --- Time Travel (Developer) ---
@@ -238,12 +238,12 @@ createApp({
       const neverReviewed = deckCards.filter(c => !c.lastReviewDate && c.nextDueDate <= today);
       
       // Settings
-      const targetCards = currentDeck.value?.queueLimit || Infinity;
+      const targetCards = currentDeck.value?.queueLimit || 5;
       const maxNewCards = currentDeck.value?.maxNewCards ?? 1;
       
       // Debug info collection
       const debugInfo = {
-        targetCards: targetCards === Infinity ? '∞' : targetCards,
+        targetCards: targetCards,
         maxNewCards: maxNewCards,
         reviewedCount: reviewed.length,
         queueCount: neverReviewed.length,
@@ -626,7 +626,7 @@ createApp({
       newDeckName.value = '';
       newDeckInterval.value = 2;
       newDeckIntervalUnit.value = 'days';
-      newDeckLimit.value = null;
+      newDeckLimit.value = 5;
       newDeckMaxNewCards.value = 1;
       showNewDeck.value = false;
       
@@ -1014,7 +1014,7 @@ createApp({
       settingsName.value = currentDeck.value.name;
       settingsInterval.value = currentDeck.value.startingInterval || 2;
       settingsIntervalUnit.value = currentDeck.value.intervalUnit || 'days';
-      settingsLimit.value = currentDeck.value.queueLimit || '';
+      settingsLimit.value = currentDeck.value.queueLimit || 5;
       settingsMaxNewCards.value = currentDeck.value.maxNewCards ?? 1;
       showSettings.value = true;
     }
@@ -1029,7 +1029,7 @@ createApp({
           name: settingsName.value.trim(),
           startingInterval: parseInt(settingsInterval.value) || 2,
           intervalUnit: settingsIntervalUnit.value || 'days',
-          queueLimit: settingsLimit.value ? parseInt(settingsLimit.value) : null,
+          queueLimit: settingsLimit.value ? parseInt(settingsLimit.value) : 5,
           maxNewCards: parseInt(settingsMaxNewCards.value) || 1
         };
         await setDoc(deckRef, updates, { merge: true });
@@ -2355,11 +2355,11 @@ createApp({
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Target cards/day (blank = no limit)</label>
+            <label class="form-label">Target cards/day</label>
             <input 
               type="number" 
               class="form-input" 
-              placeholder="No limit"
+              placeholder="5"
               min="1"
               v-model.number="newDeckLimit"
             >
@@ -2570,7 +2570,7 @@ createApp({
               type="number" 
               class="form-input"
               v-model="settingsLimit"
-              placeholder="No limit"
+              placeholder="5"
               min="1"
             />
           </div>
