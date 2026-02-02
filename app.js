@@ -20,6 +20,14 @@ import {
 } from './utils.js';
 import { LANDING_PAGES, getLandingPage } from './landing-pages/index.js';
 
+// ===== ADMIN CONFIGURATION =====
+// List of admin user emails who can access analytics
+const ADMIN_EMAILS = [
+  'btilly@gmail.com',
+  'kateyoak@gmail.com',
+  // Add more admin emails here
+];
+
 // ===== FIREBASE SETUP =====
 const USE_EMULATOR = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
@@ -186,6 +194,15 @@ createApp({
     const currentDeckCards = computed(() => {
       if (!currentDeckId.value) return [];
       return cards.value.filter(c => c.deckId === currentDeckId.value);
+    });
+
+    // Check if current user is an admin
+    const isAdmin = computed(() => {
+      if (!user.value) return false;
+      // Check if user's email is in the admin list
+      const email = user.value.email;
+      if (!email) return false;
+      return ADMIN_EMAILS.includes(email.toLowerCase());
     });
 
     // Dev environment detection - shows ribbon on dev.fireminder.com
@@ -1361,15 +1378,37 @@ createApp({
     }
     
     function initLandingPage() {
+      // Get the full URL to parse both hash and query params
+      const url = window.location.href;
       const hash = window.location.hash;
+      
+      // Extract query params from URL (they may be before or after the hash)
+      // URL formats we support:
+      // - example.com/#/landing/welcome?utm_campaign=test
+      // - example.com/#landing/welcome?utm_campaign=test
+      // - example.com/?utm_campaign=test#/landing/welcome
+      // - example.com/#/landing/welcome.html
+      
+      // Get query params from the main URL first, then from hash if present
+      let queryParams = new URLSearchParams(window.location.search);
+      
       // Support both #landing/ and #/landing/ formats
       // Also strip .html extension if present (but reject .js)
-      const match = hash.match(/^#\/?landing\/([^?]+?)(?:\.html)?(\?(.*))?$/);
+      // Use a more robust regex that handles mobile browser quirks
+      const match = hash.match(/^#\/?landing\/([^?#]+?)(?:\.html)?(?:\?(.*))?$/i);
       
       if (match) {
         let pageName = match[1];
-        const queryString = match[3] || '';
-        const params = new URLSearchParams(queryString);
+        
+        // Also try to get query params from after the hash
+        const hashQueryString = match[2] || '';
+        if (hashQueryString) {
+          const hashParams = new URLSearchParams(hashQueryString);
+          // Merge hash params into main query params (hash params take precedence)
+          for (const [key, value] of hashParams) {
+            queryParams.set(key, value);
+          }
+        }
         
         // Reject .js extension - it's not valid for landing pages
         if (pageName.endsWith('.js')) {
@@ -1377,12 +1416,21 @@ createApp({
           return;
         }
         
+        // Clean up pageName (trim whitespace, lowercase)
+        pageName = pageName.trim().toLowerCase();
+        
         // Use imported LANDING_PAGES from landing-pages/index.js
         const pageData = getLandingPage(pageName);
         if (pageData) {
+          console.log('📄 Landing page detected:', pageName);
           currentLandingPage.value = pageName;
-          landingPageCampaign.value = params.get('utm_campaign') || params.get('c') || null;
+          landingPageCampaign.value = queryParams.get('utm_campaign') || queryParams.get('c') || null;
+          if (landingPageCampaign.value) {
+            console.log('📣 Campaign:', landingPageCampaign.value);
+          }
           trackPageView();
+        } else {
+          console.warn('Landing page not found:', pageName, '- Available pages:', Object.keys(LANDING_PAGES));
         }
       }
     }
@@ -1762,6 +1810,7 @@ createApp({
       shorterInterval,
       longerInterval,
       nextInterval,
+      isAdmin,
       
       // Methods
       signIn,
@@ -1917,8 +1966,8 @@ createApp({
           <template v-if="user">
             <div class="sidebar-section-title" style="margin-top: var(--space-lg);">Developer</div>
             
-            <!-- Analytics Admin -->
-            <button class="sidebar-action-btn" @click="openAnalyticsAdmin(); showSidebar = false" data-testid="analytics-admin-link">
+            <!-- Analytics Admin (admin users only) -->
+            <button v-if="isAdmin" class="sidebar-action-btn" @click="openAnalyticsAdmin(); showSidebar = false" data-testid="analytics-admin-link">
               📊 Landing Analytics
             </button>
             
