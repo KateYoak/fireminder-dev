@@ -1216,6 +1216,24 @@ html, body {
   text-decoration: underline;
 }
 
+/* Bump Toast (Not now - same styling as skip toast) */
+.bump-toast {
+  position: fixed;
+  bottom: calc(60px + var(--space-lg));
+  left: var(--space-md);
+  right: var(--space-md);
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 150;
+  animation: slideUp 0.3s ease;
+}
+
 /* Past Reflections (inline on review screen) */
 .past-reflections {
   background: var(--bg-card);

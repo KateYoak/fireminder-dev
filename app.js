@@ -124,6 +124,12 @@ createApp({
     const showSkipToast = ref(false);
     const skippedCard = ref(null);
     let skipToastTimeout = null;
+    
+    // Bump feature: move card to end of queue (not skip entirely)
+    const showBumpToast = ref(false);
+    const bumpedCard = ref(null);
+    const bumpedCardIds = ref([]);  // Cards bumped to end of queue
+    let bumpToastTimeout = null;
     const showAllReflections = ref(false);
     const moveToDeckTarget = ref(null);
     const currentTheme = ref(getStoredTheme());
@@ -252,6 +258,18 @@ createApp({
         if (newCardsAdded >= maxNewCards) break;
         selected.push(card);
         newCardsAdded++;
+      }
+      
+      // Sort bumped cards to the end of the queue
+      const bumped = bumpedCardIds.value;
+      if (bumped.length > 0) {
+        selected.sort((a, b) => {
+          const aIsBumped = bumped.includes(a.id);
+          const bIsBumped = bumped.includes(b.id);
+          if (aIsBumped && !bIsBumped) return 1;   // a goes after b
+          if (!aIsBumped && bIsBumped) return -1;  // a goes before b
+          return 0;  // preserve original order
+        });
       }
       
       return selected;
@@ -1140,6 +1158,42 @@ createApp({
       skippedCard.value = null;
     }
     
+    function bumpCard() {
+      if (!currentCard.value) return;
+      
+      // Store the bumped card for undo
+      bumpedCard.value = { ...currentCard.value };
+      
+      // Add card ID to bumped list (moves to end of queue)
+      if (!bumpedCardIds.value.includes(currentCard.value.id)) {
+        bumpedCardIds.value.push(currentCard.value.id);
+      }
+      
+      showMenu.value = false;
+      showBumpToast.value = true;
+      
+      // Clear any existing timeout
+      if (bumpToastTimeout) clearTimeout(bumpToastTimeout);
+      
+      // Auto-dismiss after 3 seconds
+      bumpToastTimeout = setTimeout(() => {
+        showBumpToast.value = false;
+        bumpedCard.value = null;
+      }, 3000);
+    }
+    
+    function undoBump() {
+      if (!bumpedCard.value) return;
+      
+      // Remove card from bumped list
+      bumpedCardIds.value = bumpedCardIds.value.filter(id => id !== bumpedCard.value.id);
+      
+      // Clear timeout and toast
+      if (bumpToastTimeout) clearTimeout(bumpToastTimeout);
+      showBumpToast.value = false;
+      bumpedCard.value = null;
+    }
+    
     async function moveCard() {
       const card = showCardDetail.value || currentCard.value;
       if (!card || !user.value || !moveToDeckTarget.value) return;
@@ -1577,6 +1631,11 @@ createApp({
       skippedCard,
       skipCard,
       undoSkip,
+      showBumpToast,
+      bumpedCard,
+      bumpedCardIds,
+      bumpCard,
+      undoBump,
       showAllReflections,
       cardReflections,
       simulatedDateRef,
@@ -1928,7 +1987,8 @@ createApp({
                 <div class="dropdown-menu" v-if="showMenu">
                   <button class="dropdown-item" @click="startEditing">Rephrase card</button>
                   <button class="dropdown-item" @click="showHistory = true; showMenu = false">View history</button>
-                  <button class="dropdown-item" @click="skipCard">Skip (review later)</button>
+                  <button class="dropdown-item" @click="bumpCard">Not now</button>
+                  <button class="dropdown-item" @click="skipCard">Skip for today</button>
                   <button class="dropdown-item" @click="openMoveToDeck(); showMenu = false">Move to deck...</button>
                   <div class="dropdown-divider"></div>
                   <button class="dropdown-item" @click="exitReview">Exit review</button>
@@ -2627,6 +2687,12 @@ createApp({
       <div class="skip-toast" v-if="showSkipToast">
         <span>Skipped. Will show again later today.</span>
         <button class="toast-undo" @click="undoSkip">Undo</button>
+      </div>
+      
+      <!-- Bump Toast (Not now) -->
+      <div class="bump-toast" v-if="showBumpToast">
+        <span>Moved to end of queue.</span>
+        <button class="toast-undo" @click="undoBump">Undo</button>
       </div>
     </div>
   `
