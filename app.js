@@ -1259,10 +1259,15 @@ createApp({
       'tips': { title: 'Tips & Tricks', description: 'Get the most out of Fireminder' }
     };
     
-    async function loadContentPage(slug) {
+    async function loadContentPage(slug, skipHistory = false) {
       contentPageSlug.value = slug;
       contentPageLoading.value = true;
       showContentPage.value = true;
+      
+      // Push to browser history for back button support
+      if (!skipHistory) {
+        history.pushState({ contentPage: slug }, '', `#content/${slug}`);
+      }
       
       try {
         const response = await fetch(`/content/${slug}.md`);
@@ -1305,16 +1310,64 @@ createApp({
         .replace(/^(.+)$/gm, (match) => match.startsWith('<') ? match : `<p>${match}</p>`);
     }
     
-    function closeContentPage() {
+    function closeContentPage(skipHistory = false) {
       showContentPage.value = false;
       contentPageSlug.value = null;
       contentPageData.value = null;
+      
+      // Push clean state to browser history
+      if (!skipHistory) {
+        history.pushState({ contentPage: null }, '', window.location.pathname);
+      }
     }
     
-    function openContentIndex() {
+    function openContentIndex(skipHistory = false) {
       contentPageData.value = null;
       contentPageSlug.value = null;
       showContentPage.value = true;
+      
+      // Push to browser history for back button support
+      if (!skipHistory) {
+        history.pushState({ contentPage: 'index' }, '', '#content');
+      }
+    }
+    
+    function handleContentClick(event) {
+      // Handle internal content links (data-page attribute)
+      const link = event.target.closest('[data-page]');
+      if (link) {
+        event.preventDefault();
+        const slug = link.dataset.page;
+        if (CONTENT_INDEX[slug]) {
+          loadContentPage(slug);
+        }
+      }
+    }
+    
+    function handlePopState(event) {
+      const state = event.state;
+      
+      if (state && state.contentPage) {
+        if (state.contentPage === 'index') {
+          // Navigate back to content index
+          contentPageData.value = null;
+          contentPageSlug.value = null;
+          showContentPage.value = true;
+        } else {
+          // Navigate to specific content page
+          loadContentPage(state.contentPage, true);
+        }
+      } else {
+        // Close content panel (navigated away from content)
+        showContentPage.value = false;
+        contentPageSlug.value = null;
+        contentPageData.value = null;
+      }
+    }
+    
+    function goBackContent() {
+      // Use browser history for back navigation
+      window.history.back();
     }
     
     const filteredContentIndex = computed(() => {
@@ -1340,6 +1393,20 @@ createApp({
       // Check for landing page route
       initLandingPage();
       window.addEventListener('hashchange', initLandingPage);
+      
+      // Listen for browser back/forward buttons (popstate)
+      window.addEventListener('popstate', handlePopState);
+      
+      // Initialize content page from URL hash if present
+      const hash = window.location.hash;
+      if (hash.startsWith('#content/')) {
+        const slug = hash.replace('#content/', '');
+        if (CONTENT_INDEX[slug]) {
+          loadContentPage(slug, true);
+        }
+      } else if (hash === '#content') {
+        openContentIndex(true);
+      }
       
       onAuthStateChanged(auth, async (firebaseUser) => {
         user.value = firebaseUser;
@@ -1495,6 +1562,8 @@ createApp({
       showSuggestionBox,
       suggestionText,
       submitSuggestion,
+      handleContentClick,
+      goBackContent,
       isEditingDetail,
       detailEditContent,
       startEditingDetail,
@@ -2231,7 +2300,7 @@ createApp({
       <!-- Content Page Panel -->
       <div class="panel content-panel" v-if="showContentPage">
         <div class="panel-header">
-          <button class="icon-btn" @click="contentPageSlug ? (contentPageSlug = null, contentPageData = null) : closeContentPage()">
+          <button class="icon-btn" @click="goBackContent()">
             {{ contentPageSlug ? '←' : '✕' }}
           </button>
           <span class="panel-title">{{ contentPageData?.title || 'Help & Docs' }}</span>
