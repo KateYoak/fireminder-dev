@@ -564,6 +564,10 @@ html, body {
   margin-bottom: var(--space-lg);
 }
 
+.resume-review-btn {
+  margin-bottom: var(--space-lg);
+}
+
 .stats {
   background: var(--bg-card);
   border-radius: var(--radius-md);

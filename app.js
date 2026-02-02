@@ -96,6 +96,7 @@ createApp({
     const showAllCards = ref(false);
     const showSettings = ref(false);
     const showMoveToDeck = ref(false);
+    const pauseReview = ref(false); // Allows user to exit review mode while cards are due
     const showCalendar = ref(false);
     const calendarMonth = ref(new Date().getMonth());
     const calendarYear = ref(new Date().getFullYear());
@@ -688,6 +689,16 @@ createApp({
     function selectDeck(deckId) {
       currentDeckId.value = deckId;
       showSidebar.value = false;
+      pauseReview.value = false; // Reset pause state when switching decks
+    }
+
+    function exitReview() {
+      pauseReview.value = true;
+      showMenu.value = false;
+    }
+
+    function resumeReview() {
+      pauseReview.value = false;
     }
 
     function openAddCard() {
@@ -1327,6 +1338,9 @@ createApp({
       showAllCards,
       showCardDetail,
       showSettings,
+      pauseReview,
+      exitReview,
+      resumeReview,
       showCalendar,
       calendarData,
       calendarMonth,
@@ -1577,8 +1591,8 @@ createApp({
           <button class="btn-primary" @click="showNewDeck = true">Create Deck</button>
         </div>
 
-        <!-- Review Card -->
-        <template v-else-if="currentCard">
+        <!-- Review Card (only if not paused) -->
+        <template v-else-if="currentCard && !pauseReview">
           <div class="card">
             <div v-if="isEditing" class="card-editing">
               <div style="color: var(--accent); font-size: 0.85rem; margin-bottom: 0.5rem;">✎ EDITING</div>
@@ -1670,6 +1684,7 @@ createApp({
                   <button class="dropdown-item" @click="skipCard">Skip (review later)</button>
                   <button class="dropdown-item" @click="openMoveToDeck(); showMenu = false">Move to deck...</button>
                   <div class="dropdown-divider"></div>
+                  <button class="dropdown-item" @click="exitReview">Exit review</button>
                   <button class="dropdown-item" @click="retireCard">Retire</button>
                   <button class="dropdown-item danger" @click="deleteCard">Delete...</button>
                 </div>
@@ -1682,9 +1697,17 @@ createApp({
           </div>
         </template>
 
-        <!-- Empty Deck State -->
+        <!-- Deck Overview State (paused or all caught up) -->
         <div v-else class="empty-state">
-          <div class="empty-status">Status: All caught up ✓</div>
+          <!-- Paused review state -->
+          <template v-if="pauseReview && dueCards.length > 0">
+            <div class="empty-status">{{ dueCards.length }} card{{ dueCards.length === 1 ? '' : 's' }} due for review</div>
+            <button class="btn-primary resume-review-btn" @click="resumeReview">Resume Review</button>
+          </template>
+          <!-- All caught up state -->
+          <template v-else>
+            <div class="empty-status">Status: All caught up ✓</div>
+          </template>
           <div class="stats">
             <div class="stat-row">
               <span>Active cards</span>
@@ -1723,7 +1746,7 @@ createApp({
           :key="deck.id"
           class="tab"
           :class="{ active: deck.id === currentDeckId }"
-          @click="currentDeckId = deck.id"
+          @click="currentDeckId = deck.id; pauseReview = false"
         >
           {{ deck.name }}
         </button>
