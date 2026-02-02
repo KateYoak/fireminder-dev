@@ -100,6 +100,7 @@ createApp({
     const showCalendar = ref(false);
     const calendarMonth = ref(new Date().getMonth());
     const calendarYear = ref(new Date().getFullYear());
+    const selectedCalendarDay = ref(null); // Selected day data object
     const showThemePicker = ref(false);
     const showDatePicker = ref(false);
     const showResetConfirm = ref(false);
@@ -339,6 +340,8 @@ createApp({
       } else {
         calendarMonth.value--;
       }
+      // Clear selected day when navigating months
+      selectedCalendarDay.value = null;
     }
     
     function nextMonth() {
@@ -348,6 +351,54 @@ createApp({
       } else {
         calendarMonth.value++;
       }
+      // Clear selected day when navigating months
+      selectedCalendarDay.value = null;
+    }
+    
+    // Get cards for a specific calendar day
+    function getCardsForDay(dateStr) {
+      const deckCards = currentDeckCards.value.filter(c => !c.deleted);
+      const today = effectiveToday.value;
+      const isPast = dateStr < today;
+      
+      if (isPast) {
+        // For past days, return cards that were reviewed on this date
+        return deckCards.filter(c => 
+          c.history?.some(h => h.date === dateStr)
+        ).map(c => {
+          // Find the history entry for this date
+          const historyEntry = c.history.find(h => h.date === dateStr);
+          return { ...c, historyEntry };
+        });
+      } else {
+        // For today and future, return cards due on this date
+        return deckCards.filter(c => 
+          !c.retired && c.nextDueDate === dateStr
+        );
+      }
+    }
+    
+    // Computed: cards for selected day
+    const cardsForSelectedDay = computed(() => {
+      if (!selectedCalendarDay.value) return [];
+      return getCardsForDay(selectedCalendarDay.value.date);
+    });
+    
+    // Select a calendar day to show its cards
+    function selectCalendarDay(day) {
+      // Toggle off if clicking the same day
+      if (selectedCalendarDay.value?.date === day.date) {
+        selectedCalendarDay.value = null;
+      } else {
+        selectedCalendarDay.value = day;
+      }
+    }
+    
+    // Open card detail from calendar
+    function openCardFromCalendar(card) {
+      showCardDetail.value = card;
+      showCalendar.value = false;
+      selectedCalendarDay.value = null;
     }
 
     const deckStats = computed(() => {
@@ -1347,6 +1398,10 @@ createApp({
       calendarYear,
       prevMonth,
       nextMonth,
+      selectedCalendarDay,
+      cardsForSelectedDay,
+      selectCalendarDay,
+      openCardFromCalendar,
       settingsName,
       settingsInterval,
       settingsIntervalUnit,
@@ -2091,7 +2146,7 @@ createApp({
       <!-- Calendar Panel -->
       <div class="panel" v-if="showCalendar">
         <div class="panel-header">
-          <button class="icon-btn" @click="showCalendar = false">✕</button>
+          <button class="icon-btn" @click="showCalendar = false; selectedCalendarDay = null">✕</button>
           <span class="panel-title">Calendar</span>
         </div>
         <div class="panel-body">
@@ -2117,8 +2172,11 @@ createApp({
                 past: day.isPast, 
                 future: day.isFuture,
                 'has-reviews': day.reviewedCount > 0,
-                'has-due': day.dueCount > 0
+                'has-due': day.dueCount > 0,
+                'selected': selectedCalendarDay?.date === day.date,
+                'clickable': day.reviewedCount > 0 || day.dueCount > 0
               }"
+              @click="(day.reviewedCount > 0 || day.dueCount > 0) && selectCalendarDay(day)"
             >
               <span class="calendar-day-num">{{ day.day }}</span>
               <span class="calendar-day-count" v-if="day.reviewedCount > 0 && day.isPast">✓{{ day.reviewedCount }}</span>
@@ -2129,6 +2187,43 @@ createApp({
           <div class="calendar-legend">
             <span class="legend-item"><span class="legend-dot reviewed"></span> Reviewed</span>
             <span class="legend-item"><span class="legend-dot due"></span> Due</span>
+          </div>
+          
+          <!-- Cards for selected day -->
+          <div class="calendar-day-cards" v-if="selectedCalendarDay">
+            <div class="calendar-day-cards-header">
+              <span class="calendar-day-cards-title">
+                {{ selectedCalendarDay.isPast ? 'Reviewed on' : 'Due on' }} 
+                {{ formatHistoryDate(selectedCalendarDay.date) }}
+              </span>
+              <button class="icon-btn" @click="selectedCalendarDay = null">✕</button>
+            </div>
+            <div class="calendar-day-cards-list" v-if="cardsForSelectedDay.length > 0">
+              <div 
+                v-for="card in cardsForSelectedDay" 
+                :key="card.id"
+                class="calendar-card-item"
+                @click="openCardFromCalendar(card)"
+              >
+                <div class="calendar-card-content">{{ card.content }}</div>
+                <div class="calendar-card-meta" v-if="selectedCalendarDay.isPast && card.historyEntry">
+                  <span v-if="card.historyEntry.reflection" class="calendar-card-reflection">
+                    💭 "{{ card.historyEntry.reflection }}"
+                  </span>
+                  <span class="calendar-card-interval">
+                    Interval: {{ formatIntervalWithUnit(card.historyEntry.interval, card.historyEntry.intervalUnit || currentDeck?.intervalUnit || 'days') }}
+                  </span>
+                </div>
+                <div class="calendar-card-meta" v-else>
+                  <span class="calendar-card-interval">
+                    Current interval: {{ formatIntervalWithUnit(card.currentInterval, currentDeck?.intervalUnit || 'days') }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="calendar-day-cards-empty" v-else>
+              No cards for this day
+            </div>
           </div>
         </div>
       </div>
