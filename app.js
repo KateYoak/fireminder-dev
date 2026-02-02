@@ -1362,12 +1362,20 @@ createApp({
     
     function initLandingPage() {
       const hash = window.location.hash;
-      const match = hash.match(/^#\/landing\/([^?]+)(\?(.*))?$/);
+      // Support both #landing/ and #/landing/ formats
+      // Also strip .html extension if present (but reject .js)
+      const match = hash.match(/^#\/?landing\/([^?]+?)(?:\.html)?(\?(.*))?$/);
       
       if (match) {
-        const pageName = match[1];
+        let pageName = match[1];
         const queryString = match[3] || '';
         const params = new URLSearchParams(queryString);
+        
+        // Reject .js extension - it's not valid for landing pages
+        if (pageName.endsWith('.js')) {
+          console.warn('Landing page URLs should not end with .js - use the page name directly (e.g., #landing/welcome)');
+          return;
+        }
         
         // Use imported LANDING_PAGES from landing-pages/index.js
         const pageData = getLandingPage(pageName);
