@@ -774,6 +774,8 @@ createApp({
         if (idx !== -1) {
           cards.value[idx] = { ...cards.value[idx], ...updates };
         }
+        // "Not now" should only affect the current queue, not future sessions.
+        clearBumpedState(card.id);
         
         // Reset state
         reflectionText.value = '';
@@ -802,6 +804,7 @@ createApp({
         if (idx !== -1) {
           cards.value[idx].retired = true;
         }
+        clearBumpedState(targetCard.id);
         // Close whichever panel we're in
         showMenu.value = false;
         showCardDetail.value = null;
@@ -822,6 +825,7 @@ createApp({
         await deleteDoc(cardRef);
         
         cards.value = cards.value.filter(c => c.id !== targetCard.id);
+        clearBumpedState(targetCard.id);
         // Close whichever panel we're in
         showMenu.value = false;
         showCardDetail.value = null;
@@ -1274,6 +1278,21 @@ createApp({
       showSkipToast.value = false;
       skippedCard.value = null;
     }
+
+    function clearBumpedState(cardId) {
+      if (!cardId) return;
+
+      bumpedCardIds.value = bumpedCardIds.value.filter(id => id !== cardId);
+
+      if (bumpedCard.value?.id === cardId) {
+        bumpedCard.value = null;
+        showBumpToast.value = false;
+        if (bumpToastTimeout) {
+          clearTimeout(bumpToastTimeout);
+          bumpToastTimeout = null;
+        }
+      }
+    }
     
     function bumpCard() {
       if (!currentCard.value) return;
@@ -1336,6 +1355,7 @@ createApp({
         if (idx !== -1) {
           cards.value[idx].nextDueDate = newDueDate;
         }
+        clearBumpedState(card.id);
 
         showMenu.value = false;
       } catch (error) {
@@ -1357,6 +1377,7 @@ createApp({
         if (idx !== -1) {
           cards.value[idx].deckId = moveToDeckTarget.value;
         }
+        clearBumpedState(card.id);
         
         showMoveToDeck.value = false;
         showCardDetail.value = null;
