@@ -349,6 +349,7 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: var(--space-md);
+  flex-wrap: wrap;
 }
 
 .btn-primary {
@@ -371,6 +372,24 @@ html, body {
 
 .btn-primary:active {
   transform: translateY(0);
+}
+
+.btn-exit-review {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all 0.15s ease;
+}
+
+.btn-exit-review:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--accent);
 }
 
 /* Menu button (three dots) */

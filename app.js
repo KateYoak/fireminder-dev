@@ -2185,6 +2185,7 @@ createApp({
             </template>
             <template v-else>
               <button class="btn-primary" @click="reviewCard">✓ Review Done</button>
+              <button class="btn-exit-review" @click="exitReview">Exit review</button>
               <div class="dropdown">
                 <button class="menu-btn" @click="showMenu = !showMenu">≡</button>
                 <div class="dropdown-menu" v-if="showMenu">
