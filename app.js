@@ -399,6 +399,23 @@ createApp({
         .sort((a, b) => new Date(b.date) - new Date(a.date)); // newest first
     });
 
+    // Return to queue eligibility: first showing OR overdue by at least 2 intervals
+    const canReturnToQueue = computed(() => {
+      if (!currentCard.value) return false;
+      const card = currentCard.value;
+
+      // First showing (never reviewed)
+      if (!card.lastReviewDate) return true;
+
+      // Show only when significantly overdue
+      const today = effectiveToday.value;
+      if (card.nextDueDate >= today) return false;
+
+      const overdueDays = daysBetween(card.nextDueDate, today);
+      const intervalsOverdue = overdueDays / card.currentInterval;
+      return intervalsOverdue >= 2;
+    });
+
     // Calendar data
     const calendarData = computed(() => {
       const year = calendarYear.value;
@@ -1293,6 +1310,38 @@ createApp({
       showBumpToast.value = false;
       bumpedCard.value = null;
     }
+
+    async function returnToQueue() {
+      if (!currentCard.value || !user.value) return;
+
+      const card = currentCard.value;
+      const deckCards = currentDeckCards.value.filter(c => !c.retired && !c.deleted && c.id !== card.id);
+
+      // Place returned card after the latest currently scheduled card in this deck.
+      let latestDueDate = effectiveToday.value;
+      for (const c of deckCards) {
+        if (c.nextDueDate > latestDueDate) {
+          latestDueDate = c.nextDueDate;
+        }
+      }
+
+      const intervalUnit = currentDeck.value?.intervalUnit || 'days';
+      const newDueDate = formatDate(addInterval(latestDueDate, 1, intervalUnit));
+
+      try {
+        const cardRef = doc(db, ...getUserPath(user.value.uid), 'cards', card.id);
+        await setDoc(cardRef, { nextDueDate: newDueDate }, { merge: true });
+
+        const idx = cards.value.findIndex(c => c.id === card.id);
+        if (idx !== -1) {
+          cards.value[idx].nextDueDate = newDueDate;
+        }
+
+        showMenu.value = false;
+      } catch (error) {
+        console.error('Error returning card to queue:', error);
+      }
+    }
     
     async function moveCard() {
       const card = showCardDetail.value || currentCard.value;
@@ -1775,6 +1824,8 @@ createApp({
       bumpedCardIds,
       bumpCard,
       undoBump,
+      canReturnToQueue,
+      returnToQueue,
       showAllReflections,
       cardReflections,
       simulatedDateRef,
@@ -2141,6 +2192,7 @@ createApp({
                   <button class="dropdown-item" @click="showHistory = true; showMenu = false">View history</button>
                   <button class="dropdown-item" @click="bumpCard">Not now</button>
                   <button class="dropdown-item" @click="skipCard">Skip for today</button>
+                  <button class="dropdown-item" v-if="canReturnToQueue" @click="returnToQueue">Return to queue</button>
                   <button class="dropdown-item" @click="openMoveToDeck(); showMenu = false">Move to deck...</button>
                   <div class="dropdown-divider"></div>
                   <button class="dropdown-item" @click="exitReview">Exit review</button>

@@ -125,6 +125,11 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Firebase emulator banner can overlap dropdown actions in tests. */
+.firebase-emulator-warning {
+  pointer-events: none;
+}
+
 #app {
   min-height: 100%;
   display: flex;
